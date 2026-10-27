@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Questionnaire — BMT Green Academy</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0C2B20">
+<link rel="icon" href="assets/img/logo-512.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<main class="shell">
+  <img class="leaf a" src="assets/img/feuillage-or.svg" alt="">
+  <img class="leaf b" src="assets/img/feuillage-vert.svg" alt="">
+  <div class="wrap">
+
+    <header class="brand">
+      <img src="assets/img/logo-512.png" alt="BMT Green Academy">
+      <span class="eyebrow">BMT Green Academy</span>
+    </header>
+
+    <!-- 1. Accueil -->
+    <section id="s-welcome" class="card welcome fade">
+      <h1 id="w-title">Évaluation des membres</h1>
+      <hr class="rule">
+      <p class="lead" id="w-sub"></p>
+      <div class="facts">
+        <div><b id="w-n">5</b>questions</div>
+        <div><b>1</b>seule tentative</div>
+      </div>
+      <form id="f-start" novalidate>
+        <div class="field">
+          <label for="name">Votre nom et prénom</label>
+          <input id="name" autocomplete="name" placeholder="Ex. Aya Koné" maxlength="80" required>
+        </div>
+        <p class="msg" id="w-msg" role="alert"></p>
+        <button class="btn" type="submit">Commencer</button>
+      </form>
+    </section>
+
+    <!-- 2. Question -->
+    <section id="s-quiz" class="card" hidden>
+      <div class="progress"><span id="p-txt">Question 1 sur 5</span><div class="bar"><i id="p-bar"></i></div></div>
+      <div id="q-box" class="fade">
+        <h2 class="q-title" id="q-title"></h2>
+        <div class="opts" id="q-opts" role="group" aria-labelledby="q-title"></div>
+      </div>
+      <div class="nav"><button class="btn" id="b-next" disabled>Suivant</button></div>
+    </section>
+
+    <!-- 3. Résultat -->
+    <section id="s-result" class="card score fade" hidden>
+      <span class="eyebrow" id="r-name"></span>
+      <div class="ring">
+        <svg width="170" height="170" viewBox="0 0 170 170" aria-hidden="true">
+          <circle cx="85" cy="85" r="74" fill="none" stroke="#EDE5D4" stroke-width="6"/>
+          <circle id="r-arc" cx="85" cy="85" r="74" fill="none" stroke="#B08433" stroke-width="6" stroke-linecap="round" stroke-dasharray="465" stroke-dashoffset="465" style="transition:stroke-dashoffset 1.2s cubic-bezier(.2,.7,.2,1)"/>
+        </svg>
+        <div class="num"><div><span id="r-score">0</span><small id="r-total"></small></div></div>
+      </div>
+      <h2 id="r-title"></h2>
+      <p style="color:var(--muted)" id="r-msg"></p>
+      <div class="corr"><h3>Votre correction</h3><div id="r-corr"></div></div>
+    </section>
+
+  </div>
+</main>
+
+<script src="assets/js/questions.js"></script>
+<script src="assets/js/store.js"></script>
+<script>
+(async function(){
+  const $ = (id) => document.getElementById(id);
+  const L = ["A","B","C","D","E","F"];
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const quiz = await BMT_STORE.getQuiz();
+  const Q = quiz.questions;
+  let name = "", i = 0, answers = [];
+
+  $("w-title").textContent = quiz.title;
+  $("w-sub").textContent = quiz.subtitle;
+  $("w-n").textContent = Q.length;
+
+  $("f-start").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = $("name").value.trim();
+    if (v.length < 3 || !v.includes(" ")) { $("w-msg").textContent = "Merci d'indiquer votre nom et votre prénom."; return; }
+    if (await BMT_STORE.hasAttempted(v)) { $("w-msg").textContent = "Ce nom a déjà complété le questionnaire. Une seule tentative est autorisée."; return; }
+    name = v; $("s-welcome").hidden = true; $("s-quiz").hidden = false; show();
+  });
+
+  function show(){
+    const q = Q[i];
+    $("p-txt").textContent = "Question " + (i+1) + " sur " + Q.length;
+    $("p-bar").style.width = (i / Q.length * 100) + "%";
+    $("q-title").textContent = q.q;
+    $("q-opts").innerHTML = q.options.map((o, k) =>
+      '<button type="button" class="opt" data-k="'+k+'" aria-pressed="false"><span class="l">'+L[k]+'</span><span>'+esc(o)+'</span></button>').join("");
+    $("b-next").disabled = true;
+    $("b-next").textContent = i === Q.length - 1 ? "Terminer" : "Suivant";
+    const box = $("q-box"); box.classList.remove("fade"); void box.offsetWidth; box.classList.add("fade");
+  }
+
+  $("q-opts").addEventListener("click", (e) => {
+    const b = e.target.closest(".opt"); if (!b) return;
+    answers[i] = +b.dataset.k;
+    $("q-opts").querySelectorAll(".opt").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+    $("b-next").disabled = false;
+  });
+
+  $("b-next").addEventListener("click", async () => {
+    if (i < Q.length - 1) { i++; show(); return; }
+    $("b-next").disabled = true;
+    $("p-bar").style.width = "100%";
+    const rec = await BMT_STORE.submit(name, answers);
+    result(rec);
+  });
+
+  function result(rec){
+    $("s-quiz").hidden = true; $("s-result").hidden = false;
+    window.scrollTo({top:0});
+    const pct = rec.score / rec.total;
+    $("r-name").textContent = rec.name;
+    $("r-score").textContent = rec.score;
+    $("r-total").textContent = "sur " + rec.total;
+    $("r-title").textContent = pct >= .8 ? "Magnifique travail" : pct >= .5 ? "Belle progression" : "Continuons ensemble";
+    $("r-msg").textContent = pct >= .8 ? "Vous maîtrisez très bien les notions abordées." : pct >= .5 ? "Les bases sont là, quelques points à consolider." : "Relisez la correction ci-dessous, elle vous aidera à avancer.";
+    requestAnimationFrame(() => setTimeout(() => { $("r-arc").style.strokeDashoffset = 465 * (1 - pct); }, 80));
+    $("r-corr").innerHTML = Q.map((q, k) => {
+      const ok = rec.answers[k] === q.answer;
+      return '<div class="ci"><div class="qt">'+(k+1)+'. '+esc(q.q)+'</div><div class="ans">'
+        + '<div><span class="tag '+(ok?'ok':'ko')+'">'+(ok?'Juste':'À revoir')+'</span>Votre réponse : '+esc(q.options[rec.answers[k]])+'</div>'
+        + (ok ? '' : '<div><span class="tag ok">Réponse</span>'+esc(q.options[q.answer])+'</div>')
+        + '</div>' + (q.explain ? '<p class="expl">'+esc(q.explain)+'</p>' : '') + '</div>';
+    }).join("");
+  }
+})();
+</script>
+</body>
+</html>

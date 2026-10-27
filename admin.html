@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Espace de suivi — BMT Green Academy</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="assets/img/logo-512.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<main class="shell">
+  <div class="wrap wide">
+    <header class="topbar">
+      <div class="ttl"><img src="assets/img/logo-512.png" alt="BMT Green Academy"><div><span class="eyebrow">Espace privé</span><h1>Suivi des résultats</h1></div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn ghost small" id="b-refresh">Actualiser</button>
+        <button class="btn small" id="b-csv">Exporter (Excel)</button>
+      </div>
+    </header>
+
+    <div class="stats" id="stats"></div>
+
+    <div id="v-main">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-t="members">Membres</button>
+        <button class="tab" role="tab" aria-selected="false" data-t="questions">Par question</button>
+      </div>
+      <div class="card" style="padding:clamp(14px,3vw,28px)">
+        <div id="t-members" class="scroll"></div>
+        <div id="t-questions" hidden></div>
+      </div>
+    </div>
+
+    <div id="v-detail" hidden>
+      <button class="back" id="b-back">← Retour à la liste</button>
+      <div class="card" id="detail"></div>
+    </div>
+
+    <p class="note" id="note"></p>
+  </div>
+</main>
+
+<script src="assets/js/questions.js"></script>
+<script src="assets/js/store.js"></script>
+<script>
+(async function(){
+  const $ = (id) => document.getElementById(id);
+  const L = ["A","B","C","D","E","F"];
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const quiz = await BMT_STORE.getQuiz(); const Q = quiz.questions;
+  let data = [];
+  const cls = (a) => { const p = a.score / a.total; return p >= .8 ? "hi" : p >= .5 ? "mid" : "lo"; };
+  const fmt = (d) => new Date(d).toLocaleString("fr-FR", {day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+  async function load(){
+    data = await BMT_STORE.listAttempts();
+    renderStats(); renderMembers(); renderQuestions();
+    $("note").textContent = BMT_STORE.mode === "demo" ? "Mode démonstration : les données sont enregistrées uniquement dans ce navigateur." : "";
+  }
+
+  function renderStats(){
+    const n = data.length;
+    const avg = n ? data.reduce((s,a) => s + a.score / a.total, 0) / n * 20 : 0;
+    const best = n ? Math.max(...data.map(a => a.score / a.total)) * 20 : 0;
+    const pass = n ? Math.round(data.filter(a => a.score / a.total >= .5).length / n * 100) : 0;
+    $("stats").innerHTML =
+      '<div class="stat"><b>'+n+'</b><span>Participants</span></div>' +
+      '<div class="stat"><b>'+(n?avg.toFixed(1):"–")+'<small style="font-size:.9rem"> /20</small></b><span>Moyenne</span></div>' +
+      '<div class="stat"><b>'+(n?best.toFixed(1):"–")+'<small style="font-size:.9rem"> /20</small></b><span>Meilleure note</span></div>' +
+      '<div class="stat"><b>'+(n?pass+" %":"–")+'</b><span>Au-dessus de la moyenne</span></div>';
+  }
+
+  function renderMembers(){
+    if (!data.length) { $("t-members").innerHTML = '<p class="empty">Aucun membre n\'a encore répondu.<br>Partagez le lien du questionnaire pour commencer.</p>'; return; }
+    $("t-members").innerHTML = '<table><thead><tr><th>Membre</th><th>Score</th><th>Note /20</th><th>Date</th></tr></thead><tbody>' +
+      data.map((a,k) => '<tr class="row" data-k="'+k+'"><td>'+esc(a.name)+'</td><td><span class="pill '+cls(a)+'">'+a.score+' / '+a.total+'</span></td><td>'+(a.score/a.total*20).toFixed(1)+'</td><td>'+fmt(a.at)+'</td></tr>').join("") +
+      '</tbody></table>';
+  }
+
+  function renderQuestions(){
+    if (!data.length) { $("t-questions").innerHTML = '<p class="empty">Les statistiques apparaîtront dès les premières réponses.</p>'; return; }
+    $("t-questions").innerHTML = Q.map((q,k) => {
+      const counts = q.options.map((_, j) => data.filter(a => a.answers[k] === j).length);
+      const okPct = Math.round(counts[q.answer] / data.length * 100);
+      return '<div class="qstat"><div class="qt">'+(k+1)+'. '+esc(q.q)+' <span class="pill '+(okPct>=70?'hi':okPct>=40?'mid':'lo')+'" style="margin-left:6px">'+okPct+' % de réussite</span></div>' +
+        q.options.map((o,j) => '<div class="dist'+(j===q.answer?' right':'')+'"><span>'+L[j]+'. '+esc(o)+(j===q.answer?' ✓':'')+'</span><div class="tr"><i style="width:'+(counts[j]/data.length*100)+'%"></i></div><span>'+counts[j]+'</span></div>').join("") + '</div>';
+    }).join("");
+  }
+
+  function detail(a){
+    $("v-main").hidden = true; $("v-detail").hidden = false;
+    $("detail").innerHTML = '<span class="eyebrow">'+fmt(a.at)+'</span><h2 style="font-size:1.7rem;margin:6px 0 4px">'+esc(a.name)+'</h2>' +
+      '<p style="margin-bottom:8px"><span class="pill '+cls(a)+'">'+a.score+' / '+a.total+'</span> <span style="color:var(--muted);margin-left:8px">soit '+(a.score/a.total*20).toFixed(1)+' / 20</span></p>' +
+      Q.map((q,k) => { const ok = a.answers[k] === q.answer;
+        return '<div class="ci"><div class="qt">'+(k+1)+'. '+esc(q.q)+'</div><div class="ans"><div><span class="tag '+(ok?'ok':'ko')+'">'+(ok?'Juste':'Faux')+'</span>'+L[a.answers[k]]+'. '+esc(q.options[a.answers[k]])+'</div>' +
+          (ok ? '' : '<div><span class="tag ok">Attendu</span>'+L[q.answer]+'. '+esc(q.options[q.answer])+'</div>') + '</div></div>'; }).join("");
+    window.scrollTo({top:0});
+  }
+
+  $("t-members").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (r) detail(data[+r.dataset.k]); });
+  $("b-back").addEventListener("click", () => { $("v-detail").hidden = true; $("v-main").hidden = false; });
+  $("b-refresh").addEventListener("click", load);
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t ? "true" : "false"));
+    $("t-members").hidden = t.dataset.t !== "members"; $("t-questions").hidden = t.dataset.t !== "questions";
+  }));
+
+  $("b-csv").addEventListener("click", () => {
+    const head = ["Nom","Score","Total","Note /20","Date"].concat(Q.map((_,k) => "Q"+(k+1)));
+    const rows = data.map(a => [a.name, a.score, a.total, (a.score/a.total*20).toFixed(1), fmt(a.at)].concat(a.answers.map((r,k) => L[r] + (r === Q[k].answer ? " ✓" : " ✗"))));
+    const csv = [head].concat(rows).map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(";")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8"}));
+    const a = document.createElement("a"); a.href = url; a.download = "resultats-bmt.csv"; a.click(); URL.revokeObjectURL(url);
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
